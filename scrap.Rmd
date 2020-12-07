@@ -1,0 +1,402 @@
+---
+title: "Untitled"
+author: "a-sizer"
+date: "10/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(rvest)
+library(tidyverse)
+library(rstanarm)
+library(ggridges)
+library(gtsummary)
+library(broom.mixed)
+library(gt)
+```
+
+Plan: 
+Tab1: Introduction
+
+
+Tab1 : foundations
+- interactive: by division 
+
+Tab2: Models,, Foundational styles 
+- wins & rank
+
+Tab4: About
+
+
+
+```{r Size}
+
+master <- read_csv("data/ufc-master.csv") 
+sherdog <- read_csv("data/sherdog.csv")
+
+```
+
+
+```{r}
+
+foundations <- read_csv("data/foundation.csv")
+foundations_left_fighter <- foundations_right_fighter <- foundations 
+colnames(foundations_left_fighter)[2:20] <- paste0(colnames(foundations_left_fighter)[2:20], "_left_fighter")
+
+
+
+fight_data <- sherdog %>%
+  left_join(foundations_left_fighter, by = c("f1name" = "Name_left_fighter"))
+fight_data[complete.cases(fight_data[ , 21:39]),]
+fight_data[rowSums(is.na(fight_data[ , 21:39])) == 0, ]
+
+
+
+model_1 <-  stan_glm(data = win_loss, 
+                     win_loss ~ Wrestling + BJJ + 
+                       Boxing + Kickboxing + 
+                       Muay_Thai + Judo,
+                     seed = 9,
+                     refresh = 0)
+
+print(model_1, digits = 5)
+
+model_2 <-  stan_glm(data = win_loss, 
+                     Ranking ~ Wrestling + BJJ + 
+                       Boxing + Kickboxing + 
+                       Muay_Thai + Judo,
+                     seed = 9,
+                     refresh = 0)
+
+print(model_2, digits = 5)  
+  
+model_1 %>%
+  as_tibble() %>%
+  select(-c(`(Intercept)`, sigma)) %>%
+  pivot_longer(cols = everything(), 
+               values_to = "Coefficients", 
+               names_to = "Variable") %>%
+  ggplot(aes(x = Coefficients, y = Variable, fill = stat(x))) +
+  geom_density_ridges_gradient(alpha = 0.5, scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Win-loss pct", 
+                       option = "C") +
+  labs(
+    title = 'Difference in Win-loss percentage',
+    subtitle = 'Wrestling makes a significant 
+    difference in win-loss percentage') +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+
+
+model_2 %>%
+  as_tibble() %>%
+  select(-c(`(Intercept)`, sigma)) %>%
+  pivot_longer(cols = everything(), 
+               values_to = "Coefficients", 
+               names_to = "Variable") %>%
+  ggplot(aes(x = Coefficients, y = Variable, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3,
+                               rel_min_height = 0.01, 
+                               gradient_lwd = 2) +
+
+
+  scale_fill_viridis_c(name = "Ranking", 
+                       option = "D") +
+  labs(
+    title = 'Distribution of the difference in
+    ranking based for each style',
+    subtitle = 'Mean temperatures (Fahrenheit) by month for 2016'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+  
+
+tbl_regression(model_1, intercept = TRUE) %>%
+  as_gt() %>%
+  tab_header(title = "Regression of Win-Loss", 
+             subtitle = "The Effect of Style on Win-Loss pct") %>%
+  tab_source_note(md("Sources: Wikipedia, ESPN"))
+
+
+tbl_regression(model_2, intercept = TRUE) %>%
+  as_gt() %>%
+  tab_header(title = "Regression of Ranking", 
+             subtitle = "The Effect of Style on Ranking") %>%
+  tab_source_note(md("Source: https://voteview.com/data"))
+
+
+
+```
+
+
+
+
+
+```{r Intro}
+
+
+poundforpound <- read_csv("data/poundforpound_foundation.csv") 
+
+poundforpound %>%
+  arrange(desc(Ranking)) %>%
+  mutate(Name = factor(Name, levels = Name)) %>%
+  ggplot(aes(x = X, y = Y, color = Division)) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = Ranking, 
+               y = Name, yend = Name)) + 
+  geom_point(aes(x = Ranking, y = Name)) +
+  scale_x_continuous(breaks = seq(0, 15, 1)) +
+  theme_bw() + 
+  labs(title = "Pound for Pound Rankings", 
+       x = "Ranking", 
+       y = "Fighter")
+
+foundations %>%
+  filter(Division == input$Division) %>%
+  ggplot(aes(x = X, 
+             y = reorder(-Ranking), 
+             color = Division)) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = Ranking, 
+               y = Name, yend = Name)) + 
+  geom_point(aes(x = Ranking, y = Name)) +
+  scale_x_continuous(breaks = seq(0, 15, 1)) +
+  theme_bw() + 
+  labs(title = "Divisional Rankings", 
+       x = "Ranking", 
+       y = "Fighter") 
+
+
+methods <- sherdog %>%
+  filter(method != "NC") %>%
+  filter(method != "No") %>%
+  count(method, method_d) %>%
+  filter(n > 10) 
+
+
+
+methods %>%  
+  ggplot() + 
+  geom_col(aes(x = method, y = n)) + 
+  labs(title = "Finishes", 
+       subtitle = "Most fights end via decision", 
+       x = "Method", 
+       y = "Frequency") + 
+  theme_bw() + 
+  ylim(0,1500)
+
+
+
+
+
+
+methods %>%
+# filter(method == input$method) %>%
+  arrange(desc(n)) %>%
+  slice(1:20) %>%
+  ggplot() + 
+  geom_col(aes(y = method_d, x = n, fill = method)) + 
+  labs(title = "Types of finishes", 
+       subtitle = "Most non-decision finishes 
+       are by punches", 
+       x = "Method", 
+       y = "Frequency", 
+       fill = "Methods") + 
+  theme_bw() 
+
+
+
+
+
+```
+
+
+
+```{r Foundation}
+
+
+win_loss <- foundations %>%
+  mutate(num_foundation = Wrestling + BJJ + Boxing + 
+           Kickboxing + Muay_Thai + Judo +
+           Taekwondo + Karate + Capoeira + Kajukenbo +
+           Hapkido + Sanda + ARB) %>%
+  mutate(win_loss = Wins/(Wins + Losses)) 
+
+win_loss %>%
+  ggplot(aes(fill = "#E08B00")) + 
+  geom_col(fill = "#E08B00", aes(x = num_foundation, 
+                                 y = win_loss)) + 
+  theme_bw() + 
+  labs(title = "Does having more foundational styles give
+       more of an advantage?",
+       subtitle = "Fighters with two foundational styles
+       tend to have highest win/ loss percentages", 
+       x = "Number of Foundational Styles", 
+       y = "Win/ Loss Percentage")
+
+fight_data <- na.omit(fight_data) %>%
+  select(10:39) 
+
+#pct for each fighter by style 
+
+wrestler_pct <- fight_data %>%
+  group_by(f1name) %>%
+  filter(Wrestling_left_fighter == 1) %>%
+  mutate(pct = Wins_left_fighter/
+              (Wins_left_fighter + Losses_left_fighter)) %>%
+  summarize(pct = mean(pct), 
+            Ranking = mean(Ranking)
+            ,.groups = "drop") %>%
+  arrange(desc(pct)) %>%
+  ggplot(aes(x = X, 
+             y = reorder(pct))) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = pct, 
+               y = f1name, yend = f1name)) + 
+  geom_point(aes(x = pct, y = f1name)) +
+  theme_bw() + 
+  labs(title = "Win-Loss Percentage for Boxers", 
+       x = "Percentage", 
+       y = "Fighter") + 
+  xlim(0.5, 1)
+
+boxer_pct <- fight_data %>%
+  group_by(f1name) %>%
+  filter(Boxing_left_fighter == 1) %>%
+  mutate(pct = Wins_left_fighter/
+              (Wins_left_fighter + Losses_left_fighter)) %>%
+  summarize(pct = mean(pct), 
+            Ranking = mean(Ranking)
+            ,.groups = "drop") %>%
+  arrange(desc(pct)) %>%
+  ggplot(aes(x = X, 
+             y = reorder(pct))) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = pct, 
+               y = f1name, yend = f1name)) + 
+  geom_point(aes(x = pct, y = f1name)) +
+  theme_bw() + 
+  labs(title = "Win-Loss Percentage for Boxers", 
+       x = "Percentage", 
+       y = "Fighter") + 
+  xlim(0.5, 1)
+    
+bjj_pct <- fight_data %>%
+  group_by(f1name) %>%
+  filter(BJJ_left_fighter == 1) %>%
+  mutate(pct = Wins_left_fighter/
+              (Wins_left_fighter + Losses_left_fighter)) %>%
+  summarize(pct = mean(pct), 
+            Ranking = mean(Ranking)
+            ,.groups = "drop") %>%
+  arrange(desc(pct)) %>%
+  ggplot(aes(x = X, 
+             y = reorder(pct))) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = pct, 
+               y = f1name, yend = f1name)) + 
+  geom_point(aes(x = pct, y = f1name)) +
+  theme_bw() + 
+  labs(title = "Win-Loss Percentage for Boxers", 
+       x = "Percentage", 
+       y = "Fighter") + 
+  xlim(0.5, 1)
+  
+mt_pct <- fight_data %>%
+  group_by(f1name) %>%
+  filter(Muay_Thai_left_fighter == 1) %>%
+  mutate(pct = Wins_left_fighter/
+              (Wins_left_fighter + Losses_left_fighter)) %>%
+  summarize(pct = mean(pct), 
+            Ranking = mean(Ranking)
+           ,.groups = "drop") %>%
+  arrange(desc(pct)) %>%
+  ggplot(aes(x = X, 
+             y = reorder(pct))) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = pct, 
+               y = f1name, yend = f1name)) + 
+  geom_point(aes(x = pct, y = f1name)) +
+  theme_bw() + 
+  labs(title = "Win-Loss Percentage for Boxers", 
+       x = "Percentage", 
+       y = "Fighter") + 
+  xlim(0.5, 1) 
+
+kickboxing_pct <- fight_data %>%
+  group_by(f1name) %>%
+  filter(Kickboxing_left_fighter == 1) %>%
+  mutate(pct = Wins_left_fighter/
+              (Wins_left_fighter + Losses_left_fighter)) %>%
+  summarize(pct = mean(pct), 
+            Ranking = mean(Ranking)
+            ,.groups = "drop") %>%
+  arrange(desc(pct)) %>%
+  ggplot(aes(x = X, 
+             y = reorder(pct))) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = pct, 
+               y = f1name, yend = f1name)) + 
+  geom_point(aes(x = pct, y = f1name)) +
+  theme_bw() + 
+  labs(title = "Win-Loss Percentage for Boxers", 
+       x = "Percentage", 
+       y = "Fighter") + 
+  xlim(0.5, 1) 
+
+judo_pct <- fight_data %>%
+  group_by(f1name) %>%
+  filter(Judo_left_fighter == 1) %>%
+  mutate(pct = Wins_left_fighter/
+              (Wins_left_fighter + Losses_left_fighter)) %>%
+  summarize(pct = mean(pct), 
+            Ranking = mean(Ranking)
+            ,.groups = "drop") %>%
+  arrange(desc(pct)) %>%
+  ggplot(aes(x = X, 
+             y = reorder(pct))) + 
+  geom_segment(inherit.aes = FALSE, 
+               aes(x = 0, xend = pct, 
+               y = f1name, yend = f1name)) + 
+  geom_point(aes(x = pct, y = f1name)) +
+  theme_bw() + 
+  labs(title = "Win-Loss Percentage for Boxers", 
+       x = "Percentage", 
+       y = "Fighter") + 
+  xlim(0.5, 1) 
+
+```
+
+``
+```{r}
+
+
+
+
+
+
+
+```
+
+```{r}
+
+
+
+
+
+
+```
+
+
+```{r}
+
+  theme(legend.title = element_blank(), 
+        legend.position = "none") + 
+                              
+```
+
